@@ -1,0 +1,10 @@
+services:
+  loan-tracker:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATABASE_PATH=/app/data/loan_tracker.db
+    restart: unless-stopped
