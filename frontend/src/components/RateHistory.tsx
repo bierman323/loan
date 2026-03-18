@@ -6,7 +6,10 @@ import { getRates, createRate, deleteRate } from '../api/client'
 export default function RateHistory() {
   const [rates, setRates] = useState<Rate[]>([])
   const [showAdd, setShowAdd] = useState(false)
-  const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0])
+  const [newDate, setNewDate] = useState(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  })
   const [newRate, setNewRate] = useState('')
 
   const load = async () => {
