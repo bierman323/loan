@@ -124,8 +124,8 @@ def update_loan(loan_id: int, update: LoanUpdate):
         if not updates:
             raise HTTPException(status_code=400, detail="No fields to update")
 
-        # If payment or term changed, recalculate the other from current balance
-        if "regular_payment" in updates or "term_months" in updates:
+        # If payment, term, or frequency changed, recalculate the other from current balance
+        if "regular_payment" in updates or "term_months" in updates or "payment_frequency" in updates:
             bal = get_current_balance(loan_id)
             current_balance = bal["closing_balance"] if bal else existing["initial_amount"]
             frequency = updates.get("payment_frequency", existing["payment_frequency"])
@@ -142,6 +142,12 @@ def update_loan(loan_id: int, update: LoanUpdate):
                 updates["term_months"] = recalc_term
             elif "term_months" in updates and "regular_payment" not in updates:
                 # Term changed → recalculate payment from current balance
+                recalc_payment, _ = _resolve_payment_and_term(
+                    current_balance, 0, new_term, frequency, spread,
+                )
+                updates["regular_payment"] = recalc_payment
+            elif "payment_frequency" in updates and "regular_payment" not in updates and "term_months" not in updates:
+                # Frequency changed alone → recalculate payment keeping term fixed
                 recalc_payment, _ = _resolve_payment_and_term(
                     current_balance, 0, new_term, frequency, spread,
                 )
