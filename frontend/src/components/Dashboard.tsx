@@ -39,6 +39,33 @@ export default function Dashboard({ loan, onRefresh }: Props) {
   const principalPaid = loan.initial_amount - balance
   const freqLabel = freqLabels[loan.payment_frequency] || loan.payment_frequency
 
+  // Maturity date formatting
+  const maturityLabel = loan.maturity_date
+    ? new Date(loan.maturity_date + 'T00:00:00').toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })
+    : 'N/A'
+
+  // Time saved vs original term
+  let timeSavedLabel = 'N/A'
+  let timeSavedSub = ''
+  if (loan.maturity_date && loan.term_months && loan.start_date) {
+    const start = new Date(loan.start_date + 'T00:00:00')
+    const originalEnd = new Date(start)
+    originalEnd.setMonth(originalEnd.getMonth() + loan.term_months)
+    const projectedEnd = new Date(loan.maturity_date + 'T00:00:00')
+    const diffDays = Math.round((originalEnd.getTime() - projectedEnd.getTime()) / (1000 * 60 * 60 * 24))
+    const diffMonths = Math.round(diffDays / 30.44)
+    if (diffMonths > 0) {
+      timeSavedLabel = `${diffMonths} mo earlier`
+      timeSavedSub = `Original: ${originalEnd.toLocaleDateString('en-CA', { year: 'numeric', month: 'short' })}`
+    } else if (diffMonths < 0) {
+      timeSavedLabel = `${Math.abs(diffMonths)} mo later`
+      timeSavedSub = `Original: ${originalEnd.toLocaleDateString('en-CA', { year: 'numeric', month: 'short' })}`
+    } else {
+      timeSavedLabel = 'On track'
+      timeSavedSub = `Original: ${originalEnd.toLocaleDateString('en-CA', { year: 'numeric', month: 'short' })}`
+    }
+  }
+
   const startEdit = (field: 'payment' | 'term' | 'frequency') => {
     setEditing(field)
     if (field === 'payment') setEditPayment(loan.regular_payment.toString())
@@ -182,13 +209,15 @@ export default function Dashboard({ loan, onRefresh }: Props) {
           )}
         </div>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <Card label="Current Balance" value={formatCurrency(balance)} accent="blue" />
         <Card label="Interest Paid" value={formatCurrency(loan.interest_paid ?? 0)} sub="Total interest accrued to date" accent="amber" />
         <Card label="Interest Remaining" value={loan.interest_remaining != null ? formatCurrency(loan.interest_remaining) : 'N/A'} sub="Projected to payoff" accent="rose" />
         <Card label="Effective Rate" value={`${effectiveRate.toFixed(2)}%`} sub={`Prime + ${loan.spread}%`} accent="purple" />
         <Card label="Daily Interest" value={formatCurrency(dailyInterest)} sub={`${formatCurrency(monthlyInterest)}/mo est.`} accent="amber" />
         <Card label="Principal Paid" value={formatCurrency(principalPaid)} sub={`${((principalPaid / loan.initial_amount) * 100).toFixed(1)}% of original`} accent="green" />
+        <Card label="Maturity Date" value={maturityLabel} sub="Projected payoff date" accent="indigo" />
+        <Card label="Term Shift" value={timeSavedLabel} sub={timeSavedSub} accent={timeSavedLabel.includes('earlier') ? 'green' : timeSavedLabel.includes('later') ? 'rose' : 'sky'} />
       </div>
     </>
   )
@@ -202,6 +231,7 @@ function Card({ label, value, sub, accent }: { label: string; value: string; sub
     purple: 'border-purple-200 bg-purple-50',
     green: 'border-green-200 bg-green-50',
     rose: 'border-rose-200 bg-rose-50',
+    indigo: 'border-indigo-200 bg-indigo-50',
   }
   return (
     <div className={`rounded-lg border p-4 ${colors[accent] || ''}`}>

@@ -41,12 +41,14 @@ def _enrich_loan(loan: dict) -> dict:
     finally:
         db.close()
 
-    # Interest remaining: project forward to payoff
+    # Interest remaining and maturity date: project forward to payoff
     if loan.get("regular_payment") and loan["regular_payment"] > 0:
         proj = project_payoff(loan_id)
         loan["interest_remaining"] = round(proj.get("current_total_interest", 0), 2)
+        loan["maturity_date"] = proj.get("current_payoff_date")
     else:
         loan["interest_remaining"] = None
+        loan["maturity_date"] = None
 
     return loan
 

@@ -13,6 +13,7 @@ export interface Loan {
   effective_rate?: number
   interest_paid?: number
   interest_remaining?: number
+  maturity_date?: string | null
 }
 
 export interface LoanCreate {

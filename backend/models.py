@@ -50,6 +50,7 @@ class LoanResponse(BaseModel):
     effective_rate: Optional[float] = None
     interest_paid: Optional[float] = None
     interest_remaining: Optional[float] = None
+    maturity_date: Optional[date] = None
 
 
 # --- Transactions ---
