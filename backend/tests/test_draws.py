@@ -199,3 +199,24 @@ def test_estimated_payment_pays_off_exactly_on_plan(client, frequency, repayment
     planned = date.fromisoformat(loan["planned_maturity_date"])
     # Weekly/biweekly terms don't land exactly on a calendar month; within one period
     assert abs((projected - planned).days) <= {"weekly": 7, "biweekly": 14, "monthly": 0}[frequency]
+
+
+class TestSpread:
+    def test_new_loan_default_spread_comes_from_config(self, client):
+        from backend.config import DEFAULT_SPREAD
+        assert client.get("/api/defaults").json() == {"spread": DEFAULT_SPREAD}
+        resp = client.post("/api/loans", json={
+            "name": "X", "start_date": days_from_today(-5), "initial_amount": 1000, "regular_payment": 50,
+        })
+        assert resp.json()["spread"] == DEFAULT_SPREAD
+
+    def test_changing_spread_recalculates_all_history(self, client):
+        from backend.tests.conftest import balance_rows
+        loan = create_school_loan(client, spread=0.9)
+        interest_before = loan["interest_paid"]
+        payment_before = loan["regular_payment"]
+        updated = client.patch(f"/api/loans/{loan['id']}", json={"spread": 0.5}).json()
+        assert all(row["effective_rate"] == pytest.approx(4.95) for row in balance_rows(loan["id"]))
+        assert updated["interest_paid"] < interest_before
+        # Borrowing phase: the estimated payment follows the lower rate
+        assert updated["regular_payment"] < payment_before

@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 import os
 
 from backend.database import init_db
-from backend.routers import loans, transactions, rates, projections, users
+from backend.routers import loans, transactions, rates, projections, users, defaults
 from backend.services.scheduler import start_scheduler, stop_scheduler, daily_job
 
 
@@ -37,6 +37,7 @@ app.include_router(loans.router)
 app.include_router(transactions.router)
 app.include_router(rates.router)
 app.include_router(projections.router)
+app.include_router(defaults.router)
 
 # Serve frontend static files
 static_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "static"))

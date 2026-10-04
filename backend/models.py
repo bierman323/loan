@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Literal, Optional
 from datetime import date, datetime
+from backend.config import DEFAULT_SPREAD
 
 
 # --- Users ---
@@ -25,7 +26,7 @@ class LoanCreate(BaseModel):
     initial_amount: float = Field(gt=0)
     regular_payment: float = Field(default=0, ge=0)
     payment_frequency: PaymentFrequency = "biweekly"
-    spread: float = Field(default=0.9, ge=0)
+    spread: float = Field(default=DEFAULT_SPREAD, ge=0)
     term_months: Optional[int] = Field(default=None, gt=0)
     user_id: Optional[int] = None
     # Borrowing phase (optional): planned monthly draws until planned_draw_end_date,

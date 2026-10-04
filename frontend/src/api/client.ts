@@ -38,6 +38,9 @@ export const getUsers = () => api.get<User[]>('/users').then(r => r.data)
 export const createUser = (name: string) => api.post<User>('/users', { name }).then(r => r.data)
 export const getUserByToken = (token: string) => api.get<User>(`/users/by-token/${token}`).then(r => r.data)
 
+// Defaults for new loans (set in backend/config.py)
+export const getDefaults = () => api.get<{ spread: number }>('/defaults').then(r => r.data)
+
 // Loans
 export const getLoans = () => api.get<Loan[]>('/loans').then(r => r.data)
 export const getLoan = (id: number) => api.get<Loan>(`/loans/${id}`).then(r => r.data)

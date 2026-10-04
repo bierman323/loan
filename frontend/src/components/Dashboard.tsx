@@ -31,7 +31,7 @@ function formatDate(isoDate: string, withDay = true): string {
     : { year: 'numeric', month: 'short' })
 }
 
-type EditField = 'payment' | 'term' | 'frequency' | 'plan'
+type EditField = 'payment' | 'term' | 'frequency' | 'plan' | 'spread'
 
 export default function Dashboard({ loan, onRefresh }: Props) {
   const [editing, setEditing] = useState<EditField | null>(null)
@@ -41,6 +41,7 @@ export default function Dashboard({ loan, onRefresh }: Props) {
   const [editDrawAmount, setEditDrawAmount] = useState('')
   const [editDrawEndDate, setEditDrawEndDate] = useState('')
   const [editRepaymentStart, setEditRepaymentStart] = useState('')
+  const [editSpread, setEditSpread] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -87,6 +88,7 @@ export default function Dashboard({ loan, onRefresh }: Props) {
     if (field === 'payment') setEditPayment(loan.regular_payment.toString())
     if (field === 'term') setEditTerm(loan.term_months?.toString() || '')
     if (field === 'frequency') setEditFrequency(loan.payment_frequency)
+    if (field === 'spread') setEditSpread(loan.spread.toString())
     if (field === 'plan') {
       setEditDrawAmount(loan.planned_draw_amount ? loan.planned_draw_amount.toString() : '')
       setEditDrawEndDate(loan.planned_draw_end_date ?? '')
@@ -119,6 +121,13 @@ export default function Dashboard({ loan, onRefresh }: Props) {
         await updateLoan(loan.id, { term_months: val })
       } else if (editing === 'frequency') {
         await updateLoan(loan.id, { payment_frequency: editFrequency })
+      } else if (editing === 'spread') {
+        const val = parseFloat(editSpread)
+        if (!(val >= 0)) {
+          setError('Enter a spread of 0 or more.')
+          return
+        }
+        await updateLoan(loan.id, { spread: val })
       } else if (editing === 'plan') {
         await updateLoan(loan.id, {
           planned_draw_amount: parseFloat(editDrawAmount) || 0,
@@ -344,7 +353,41 @@ export default function Dashboard({ loan, onRefresh }: Props) {
           sub={loan.pays_off === false ? 'Loan never pays off at this payment' : 'Projected to payoff'}
           accent="rose"
         />
-        <Card label="Effective Rate" value={`${effectiveRate.toFixed(2)}%`} sub={`Prime + ${loan.spread}%`} accent="purple" />
+        {/* Effective Rate - spread above prime is editable */}
+        <div className="rounded-lg border p-4 border-purple-200 bg-purple-50 group relative">
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Effective Rate</p>
+          {editing === 'spread' ? (
+            <div className="mt-1">
+              <div className="flex items-center gap-1">
+                <span className="text-sm text-gray-500">Prime +</span>
+                <input
+                  type="number"
+                  step="0.05"
+                  min="0"
+                  className="w-full border rounded px-2 py-1 text-lg font-bold"
+                  value={editSpread}
+                  onChange={e => setEditSpread(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  autoFocus
+                />
+                <span className="text-sm text-gray-500">%</span>
+              </div>
+              {editButtons}
+              <p className="text-xs text-gray-400 mt-1">Recalculates all interest since the loan started</p>
+            </div>
+          ) : (
+            <>
+              <p className="text-2xl font-bold mt-1">{effectiveRate.toFixed(2)}%</p>
+              <p className="text-xs text-gray-500 mt-1">Prime + {loan.spread}%</p>
+              <button
+                onClick={() => startEdit('spread')}
+                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-xs text-blue-600 hover:text-blue-800"
+              >
+                Adjust
+              </button>
+            </>
+          )}
+        </div>
         <Card label="Daily Interest" value={formatCurrency(dailyInterest)} sub={`${formatCurrency(monthlyInterest)}/mo est.`} accent="amber" />
         <Card label="Total Repaid" value={formatCurrency(totalRepaid)} sub={`${formatCurrency(totalBorrowed)} borrowed to date`} accent="green" />
         <Card label="Maturity Date" value={maturityLabel} sub={maturitySub} accent={loan.pays_off === false ? 'rose' : 'indigo'} />

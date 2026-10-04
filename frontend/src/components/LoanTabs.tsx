@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Loan, LoanCreate } from '../types'
-import { createLoan, deleteLoan, updateLoan, errorMessage } from '../api/client'
+import { createLoan, deleteLoan, updateLoan, getDefaults, errorMessage } from '../api/client'
 
 interface Props {
   loans: Loan[]
@@ -19,7 +19,7 @@ export default function LoanTabs({ loans, activeLoanId, onSelect, onRefresh }: P
     initial_amount: 0,
     regular_payment: 0,
     payment_frequency: 'biweekly',
-    spread: 0.9,
+    spread: 0, // replaced by the server default when the form opens
     term_months: null,
     planned_draw_amount: 0,
     planned_draw_end_date: null,
@@ -28,6 +28,17 @@ export default function LoanTabs({ loans, activeLoanId, onSelect, onRefresh }: P
   const [form, setForm] = useState<LoanCreate>(emptyForm)
   const [hasBorrowingPhase, setHasBorrowingPhase] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const openCreate = async () => {
+    setError(null)
+    setShowCreate(true)
+    try {
+      const defaults = await getDefaults()
+      setForm(current => ({ ...current, spread: defaults.spread }))
+    } catch (e) {
+      setError(errorMessage(e))
+    }
+  }
 
   const handleCreate = async () => {
     if (!form.name || !form.start_date || form.initial_amount <= 0) {
@@ -118,7 +129,7 @@ export default function LoanTabs({ loans, activeLoanId, onSelect, onRefresh }: P
         ))}
         <button
           className="px-3 py-2 text-sm text-gray-500 hover:text-blue-600 hover:bg-gray-100 rounded-t"
-          onClick={() => setShowCreate(true)}
+          onClick={openCreate}
         >
           + New Loan
         </button>

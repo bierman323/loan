@@ -1,8 +1,8 @@
 import sqlite3
 import os
-from backend.config import DATABASE_PATH
+from backend.config import DATABASE_PATH, DEFAULT_SPREAD
 
-SCHEMA = """
+SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS loans (
     initial_amount REAL NOT NULL,
     regular_payment REAL NOT NULL DEFAULT 0,
     payment_frequency TEXT NOT NULL DEFAULT 'biweekly',
-    spread REAL NOT NULL DEFAULT 0.9,
+    spread REAL NOT NULL DEFAULT {DEFAULT_SPREAD},
     term_months INTEGER,
     user_id INTEGER REFERENCES users(id),
     planned_draw_amount REAL NOT NULL DEFAULT 0,
