@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Loan } from '../types'
-import { updateLoan } from '../api/client'
+import { updateLoan, errorMessage } from '../api/client'
 
 interface Props {
   loan: Loan
@@ -25,70 +25,112 @@ function formatCurrency(n: number): string {
   return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(n)
 }
 
+function formatDate(isoDate: string, withDay = true): string {
+  return new Date(isoDate + 'T00:00:00').toLocaleDateString('en-CA', withDay
+    ? { year: 'numeric', month: 'short', day: 'numeric' }
+    : { year: 'numeric', month: 'short' })
+}
+
+type EditField = 'payment' | 'term' | 'frequency' | 'plan'
+
 export default function Dashboard({ loan, onRefresh }: Props) {
-  const [editing, setEditing] = useState<'payment' | 'term' | 'frequency' | null>(null)
+  const [editing, setEditing] = useState<EditField | null>(null)
   const [editPayment, setEditPayment] = useState('')
   const [editTerm, setEditTerm] = useState('')
   const [editFrequency, setEditFrequency] = useState('')
+  const [editDrawAmount, setEditDrawAmount] = useState('')
+  const [editDrawEndDate, setEditDrawEndDate] = useState('')
+  const [editRepaymentStart, setEditRepaymentStart] = useState('')
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const balance = loan.current_balance ?? loan.initial_amount
   const dailyInterest = loan.daily_interest ?? 0
   const effectiveRate = loan.effective_rate ?? loan.spread
   const monthlyInterest = dailyInterest * 30.44
-  const principalPaid = loan.initial_amount - balance
+  const totalBorrowed = loan.total_borrowed ?? loan.initial_amount
+  const totalRepaid = loan.total_repaid ?? 0
   const freqLabel = freqLabels[loan.payment_frequency] || loan.payment_frequency
+  const hasBorrowingPlan = loan.planned_draw_amount > 0 || !!loan.repayment_start_date
 
   // Maturity date formatting
-  const maturityLabel = loan.maturity_date
-    ? new Date(loan.maturity_date + 'T00:00:00').toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })
-    : 'N/A'
+  let maturityLabel = 'N/A'
+  let maturitySub = 'Projected payoff date'
+  if (loan.pays_off === false) {
+    maturityLabel = 'Never'
+    maturitySub = 'Payment does not cover the interest'
+  } else if (loan.maturity_date) {
+    maturityLabel = formatDate(loan.maturity_date)
+  }
 
-  // Time saved vs original term
+  // Time saved vs the planned payoff date
   let timeSavedLabel = 'N/A'
   let timeSavedSub = ''
-  if (loan.maturity_date && loan.term_months && loan.start_date) {
-    const start = new Date(loan.start_date + 'T00:00:00')
-    const originalEnd = new Date(start)
-    originalEnd.setMonth(originalEnd.getMonth() + loan.term_months)
+  if (loan.maturity_date && loan.planned_maturity_date) {
+    const plannedEnd = new Date(loan.planned_maturity_date + 'T00:00:00')
     const projectedEnd = new Date(loan.maturity_date + 'T00:00:00')
-    const diffDays = Math.round((originalEnd.getTime() - projectedEnd.getTime()) / (1000 * 60 * 60 * 24))
+    const diffDays = Math.round((plannedEnd.getTime() - projectedEnd.getTime()) / (1000 * 60 * 60 * 24))
     const diffMonths = Math.round(diffDays / 30.44)
+    timeSavedSub = `Planned: ${formatDate(loan.planned_maturity_date, false)}`
     if (diffMonths > 0) {
       timeSavedLabel = `${diffMonths} mo earlier`
-      timeSavedSub = `Original: ${originalEnd.toLocaleDateString('en-CA', { year: 'numeric', month: 'short' })}`
     } else if (diffMonths < 0) {
       timeSavedLabel = `${Math.abs(diffMonths)} mo later`
-      timeSavedSub = `Original: ${originalEnd.toLocaleDateString('en-CA', { year: 'numeric', month: 'short' })}`
     } else {
       timeSavedLabel = 'On track'
-      timeSavedSub = `Original: ${originalEnd.toLocaleDateString('en-CA', { year: 'numeric', month: 'short' })}`
     }
   }
 
-  const startEdit = (field: 'payment' | 'term' | 'frequency') => {
+  const startEdit = (field: EditField) => {
+    setError(null)
     setEditing(field)
     if (field === 'payment') setEditPayment(loan.regular_payment.toString())
     if (field === 'term') setEditTerm(loan.term_months?.toString() || '')
     if (field === 'frequency') setEditFrequency(loan.payment_frequency)
+    if (field === 'plan') {
+      setEditDrawAmount(loan.planned_draw_amount ? loan.planned_draw_amount.toString() : '')
+      setEditDrawEndDate(loan.planned_draw_end_date ?? '')
+      setEditRepaymentStart(loan.repayment_start_date ?? '')
+    }
   }
 
-  const cancelEdit = () => setEditing(null)
+  const cancelEdit = () => {
+    setEditing(null)
+    setError(null)
+  }
 
   const saveEdit = async () => {
     setSaving(true)
+    setError(null)
     try {
       if (editing === 'payment') {
         const val = parseFloat(editPayment)
-        if (val > 0) await updateLoan(loan.id, { regular_payment: val })
+        if (!(val > 0)) {
+          setError('Enter a payment greater than 0.')
+          return
+        }
+        await updateLoan(loan.id, { regular_payment: val })
       } else if (editing === 'term') {
         const val = parseInt(editTerm)
-        if (val > 0) await updateLoan(loan.id, { term_months: val })
+        if (!(val > 0)) {
+          setError('Enter a term of at least 1 month.')
+          return
+        }
+        await updateLoan(loan.id, { term_months: val })
       } else if (editing === 'frequency') {
         await updateLoan(loan.id, { payment_frequency: editFrequency })
+      } else if (editing === 'plan') {
+        await updateLoan(loan.id, {
+          planned_draw_amount: parseFloat(editDrawAmount) || 0,
+          // Empty date fields clear the value
+          planned_draw_end_date: editDrawEndDate || null,
+          repayment_start_date: editRepaymentStart || null,
+        })
       }
       setEditing(null)
       onRefresh()
+    } catch (e) {
+      setError(errorMessage(e))
     } finally {
       setSaving(false)
     }
@@ -99,12 +141,28 @@ export default function Dashboard({ loan, onRefresh }: Props) {
     if (e.key === 'Escape') cancelEdit()
   }
 
+  const editButtons = (
+    <div className="flex gap-1 mt-1">
+      <button onClick={saveEdit} disabled={saving} className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700">Save</button>
+      <button onClick={cancelEdit} className="text-xs px-2 py-0.5 border rounded hover:bg-gray-50">Cancel</button>
+    </div>
+  )
+
   return (
     <>
+      {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+
+      {loan.in_borrowing_phase && (
+        <div className="rounded-lg border border-teal-200 bg-teal-50 px-4 py-2 mb-4 text-sm text-teal-800">
+          Borrowing phase: no payments are due until repayment begins on {formatDate(loan.repayment_start_date!)}.
+          Interest accrues and is added to the balance monthly.
+        </div>
+      )}
+
       <div className="grid grid-cols-3 gap-4 mb-4">
         {/* Payment - editable */}
         <div className="rounded-lg border p-4 border-sky-200 bg-sky-50 group relative">
-          <p className="text-xs text-gray-500 uppercase tracking-wide">Payment</p>
+          <p className="text-xs text-gray-500 uppercase tracking-wide">{loan.in_borrowing_phase ? 'Est. Payment' : 'Payment'}</p>
           {editing === 'payment' ? (
             <div className="mt-1">
               <input
@@ -117,16 +175,21 @@ export default function Dashboard({ loan, onRefresh }: Props) {
                 onKeyDown={handleKeyDown}
                 autoFocus
               />
-              <div className="flex gap-1 mt-1">
-                <button onClick={saveEdit} disabled={saving} className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700">Save</button>
-                <button onClick={cancelEdit} className="text-xs px-2 py-0.5 border rounded hover:bg-gray-50">Cancel</button>
-              </div>
-              <p className="text-xs text-gray-400 mt-1">Term will recalculate based on current balance</p>
+              {editButtons}
+              <p className="text-xs text-gray-400 mt-1">
+                {loan.in_borrowing_phase
+                  ? 'Term will recalculate based on the projected balance when repayment begins'
+                  : 'Term will recalculate based on current balance'}
+              </p>
             </div>
           ) : (
             <>
-              <p className="text-2xl font-bold mt-1">{formatCurrency(loan.regular_payment)}</p>
-              <p className="text-xs text-gray-500 mt-1">{freqLabel}</p>
+              <p className="text-2xl font-bold mt-1">{loan.regular_payment > 0 ? formatCurrency(loan.regular_payment) : 'Not set'}</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {loan.in_borrowing_phase
+                  ? (loan.term_months ? `${freqLabel}; updates as draws are recorded` : 'Set a term to estimate')
+                  : freqLabel}
+              </p>
               <button
                 onClick={() => startEdit('payment')}
                 className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-xs text-blue-600 hover:text-blue-800"
@@ -153,10 +216,7 @@ export default function Dashboard({ loan, onRefresh }: Props) {
                 <option value="biweekly">Biweekly</option>
                 <option value="monthly">Monthly</option>
               </select>
-              <div className="flex gap-1 mt-1">
-                <button onClick={saveEdit} disabled={saving} className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700">Save</button>
-                <button onClick={cancelEdit} className="text-xs px-2 py-0.5 border rounded hover:bg-gray-50">Cancel</button>
-              </div>
+              {editButtons}
             </div>
           ) : (
             <>
@@ -189,16 +249,21 @@ export default function Dashboard({ loan, onRefresh }: Props) {
                 />
                 <span className="text-sm text-gray-500">mo</span>
               </div>
-              <div className="flex gap-1 mt-1">
-                <button onClick={saveEdit} disabled={saving} className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700">Save</button>
-                <button onClick={cancelEdit} className="text-xs px-2 py-0.5 border rounded hover:bg-gray-50">Cancel</button>
-              </div>
-              <p className="text-xs text-gray-400 mt-1">Payment will recalculate based on current balance</p>
+              {editButtons}
+              <p className="text-xs text-gray-400 mt-1">
+                {loan.in_borrowing_phase
+                  ? 'Counted from when repayment begins; payment will recalculate'
+                  : 'Payment will recalculate based on current balance'}
+              </p>
             </div>
           ) : (
             <>
               <p className="text-2xl font-bold mt-1">{loan.term_months ? formatTerm(loan.term_months) : 'Open'}</p>
-              <p className="text-xs text-gray-500 mt-1">{loan.term_months ? `${loan.term_months} months` : 'No fixed term'}</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {loan.term_months
+                  ? (loan.in_borrowing_phase ? `${loan.term_months} months from repayment start` : `${loan.term_months} months`)
+                  : 'No fixed term'}
+              </p>
               <button
                 onClick={() => startEdit('term')}
                 className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-xs text-blue-600 hover:text-blue-800"
@@ -209,14 +274,80 @@ export default function Dashboard({ loan, onRefresh }: Props) {
           )}
         </div>
       </div>
+
+      {/* Borrowing plan - editable as one form */}
+      {editing === 'plan' ? (
+        <div className="rounded-lg border p-4 border-teal-200 bg-teal-50 mb-4">
+          <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Borrowing Plan</p>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Planned monthly draw ($)</label>
+              <input type="number" step="0.01" min="0" className="w-full border rounded px-2 py-1 text-sm" placeholder="0" value={editDrawAmount} onChange={e => setEditDrawAmount(e.target.value)} onKeyDown={handleKeyDown} autoFocus />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Last planned draw</label>
+              <input type="date" className="w-full border rounded px-2 py-1 text-sm" value={editDrawEndDate} onChange={e => setEditDrawEndDate(e.target.value)} onKeyDown={handleKeyDown} />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Repayment begins</label>
+              <input type="date" className="w-full border rounded px-2 py-1 text-sm" value={editRepaymentStart} onChange={e => setEditRepaymentStart(e.target.value)} onKeyDown={handleKeyDown} />
+            </div>
+          </div>
+          <p className="text-xs text-gray-400 mt-2">
+            Planned draws are only used for projections. They repeat monthly on the loan's start day; record each actual draw below.
+            The first payment is due one period after repayment begins.
+          </p>
+          {editButtons}
+        </div>
+      ) : hasBorrowingPlan ? (
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <div className="rounded-lg border p-4 border-teal-200 bg-teal-50 group relative">
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Planned Draws</p>
+            <p className="text-2xl font-bold mt-1">{loan.planned_draw_amount > 0 ? `${formatCurrency(loan.planned_draw_amount)}/mo` : 'None'}</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {loan.planned_draw_amount > 0 && loan.planned_draw_end_date ? `Until ${formatDate(loan.planned_draw_end_date)}` : 'No further draws planned'}
+            </p>
+            <button
+              onClick={() => startEdit('plan')}
+              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-xs text-blue-600 hover:text-blue-800"
+            >
+              Adjust
+            </button>
+          </div>
+          <div className="rounded-lg border p-4 border-teal-200 bg-teal-50">
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Repayment Begins</p>
+            <p className="text-2xl font-bold mt-1">{loan.repayment_start_date ? formatDate(loan.repayment_start_date) : 'Not set'}</p>
+            <p className="text-xs text-gray-500 mt-1">{loan.in_borrowing_phase ? 'No payments until then' : 'Repayment underway'}</p>
+          </div>
+          <div className="rounded-lg border p-4 border-teal-200 bg-teal-50">
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Balance at Repayment</p>
+            <p className="text-2xl font-bold mt-1">
+              {loan.balance_at_repayment_start != null ? formatCurrency(loan.balance_at_repayment_start) : 'N/A'}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">Projected, incl. planned draws and interest</p>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-4 -mt-2 text-right">
+          <button onClick={() => startEdit('plan')} className="text-xs text-blue-600 hover:text-blue-800">
+            + Add borrowing plan (draws over time)
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <Card label="Current Balance" value={formatCurrency(balance)} accent="blue" />
         <Card label="Interest Paid" value={formatCurrency(loan.interest_paid ?? 0)} sub="Total interest accrued to date" accent="amber" />
-        <Card label="Interest Remaining" value={loan.interest_remaining != null ? formatCurrency(loan.interest_remaining) : 'N/A'} sub="Projected to payoff" accent="rose" />
+        <Card
+          label="Interest Remaining"
+          value={loan.interest_remaining != null ? formatCurrency(loan.interest_remaining) : 'N/A'}
+          sub={loan.pays_off === false ? 'Loan never pays off at this payment' : 'Projected to payoff'}
+          accent="rose"
+        />
         <Card label="Effective Rate" value={`${effectiveRate.toFixed(2)}%`} sub={`Prime + ${loan.spread}%`} accent="purple" />
         <Card label="Daily Interest" value={formatCurrency(dailyInterest)} sub={`${formatCurrency(monthlyInterest)}/mo est.`} accent="amber" />
-        <Card label="Principal Paid" value={formatCurrency(principalPaid)} sub={`${((principalPaid / loan.initial_amount) * 100).toFixed(1)}% of original`} accent="green" />
-        <Card label="Maturity Date" value={maturityLabel} sub="Projected payoff date" accent="indigo" />
+        <Card label="Total Repaid" value={formatCurrency(totalRepaid)} sub={`${formatCurrency(totalBorrowed)} borrowed to date`} accent="green" />
+        <Card label="Maturity Date" value={maturityLabel} sub={maturitySub} accent={loan.pays_off === false ? 'rose' : 'indigo'} />
         <Card label="Term Shift" value={timeSavedLabel} sub={timeSavedSub} accent={timeSavedLabel.includes('earlier') ? 'green' : timeSavedLabel.includes('later') ? 'rose' : 'sky'} />
       </div>
     </>

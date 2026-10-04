@@ -9,12 +9,13 @@ Designed for a parent lending money to family members — track the real balance
 - **Multi-user support** — token-based user switching, no passwords; each user sees only their own loans
 - **Multi-loan tabs** — track multiple loans independently (car loan, furniture loan, etc.)
 - **Accurate interest calculation** — daily accrual at (prime + spread) / 365, compounded monthly on the last day of each month, using Python `Decimal` for precision
-- **Automatic rate fetching** — pulls the current Bank of Canada prime rate daily via the [Valet API](https://www.bankofcanada.ca/valet/observations/V80691311/json?recent=1)
-- **Payment recording** — record payments with date and description; balance recalculates from the affected date forward
+- **Automatic rate fetching** — syncs the Bank of Canada prime rate (weekly series) daily via the [Valet API](https://www.bankofcanada.ca/valet/observations/V80691311/json?recent=1), backfilling history back to the earliest loan start
+- **Payment and draw recording** — record payments, or additional draws (money lent out), with date and description; balance recalculates from the affected date forward
+- **Borrowing phase** — for loans drawn over time (e.g. monthly while in school): set a planned monthly draw, last draw date, and when repayment begins. No payments are due until then; the payment is estimated from the projected balance at repayment start and updates as draws are recorded
 - **Adjustable terms** — change payment amount or term mid-loan (e.g., job loss); the other recalculates from the current balance, preserving all existing payments
 - **What-if scenarios** — "What if I pay $X extra?" calculator showing interest saved, months saved, and comparison chart
 - **Balance history chart** — line chart of balance over time (Recharts)
-- **Interest dashboard** — current balance, interest paid to date, interest remaining, effective rate, daily interest, principal paid
+- **Interest dashboard** — current balance, interest paid to date, interest remaining, effective rate, daily interest, total repaid vs. borrowed, projected maturity, and shift vs. the planned payoff date
 - **Docker deployment** — single container, SQLite data persisted on host via volume mount
 
 ## Quick Start
@@ -25,7 +26,7 @@ Designed for a parent lending money to family members — track the real balance
 docker compose up --build
 ```
 
-App runs at **http://localhost:8080**. Data persists in `./data/loan_tracker.db`.
+App runs at **http://localhost:8086** (see `docker-compose.yml`). Data persists in `./data/loan_tracker.db`.
 
 ### Local Development
 
@@ -50,9 +51,8 @@ The Vite dev server proxies `/api` requests to `localhost:8080`.
 
 ```bash
 cd frontend
-npm run build
-# Copy build output to where the backend serves it:
-cp -r dist ../static
+# Builds and replaces ../static, which the backend serves
+npm run build:static
 ```
 
 ## Architecture

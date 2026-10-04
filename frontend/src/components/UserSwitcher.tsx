@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getUsers, createUser, getUserByToken, type User } from '../api/client'
+import { getUsers, createUser, errorMessage, type User } from '../api/client'
 
 interface Props {
   currentUser: User | null
@@ -11,11 +11,13 @@ export default function UserSwitcher({ currentUser, onUserChange }: Props) {
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
+  const [error, setError] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (open) {
-      getUsers().then(setUsers)
+      setError(null)
+      getUsers().then(setUsers).catch(e => setError(errorMessage(e)))
     }
   }, [open])
 
@@ -39,10 +41,15 @@ export default function UserSwitcher({ currentUser, onUserChange }: Props) {
 
   const handleCreate = async () => {
     if (!newName.trim()) return
-    const user = await createUser(newName.trim())
-    setNewName('')
-    setCreating(false)
-    selectUser(user)
+    setError(null)
+    try {
+      const user = await createUser(newName.trim())
+      setNewName('')
+      setCreating(false)
+      selectUser(user)
+    } catch (e) {
+      setError(errorMessage(e))
+    }
   }
 
   const handleSignOut = () => {
@@ -74,6 +81,8 @@ export default function UserSwitcher({ currentUser, onUserChange }: Props) {
               <p className="font-medium text-sm">{currentUser.name}</p>
             </div>
           )}
+
+          {error && <p className="text-sm text-red-600 px-4 pt-2">{error}</p>}
 
           <div className="max-h-48 overflow-y-auto">
             {users.filter(u => u.id !== currentUser?.id).map(user => (

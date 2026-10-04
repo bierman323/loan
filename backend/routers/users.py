@@ -50,6 +50,12 @@ def get_user_by_token(token: str):
 def delete_user(user_id: int):
     db = get_db()
     try:
+        loan_count = db.execute("SELECT COUNT(*) AS n FROM loans WHERE user_id = ?", (user_id,)).fetchone()["n"]
+        if loan_count > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=f"User still has {loan_count} loan(s). Delete those loans first.",
+            )
         db.execute("DELETE FROM users WHERE id = ?", (user_id,))
         db.commit()
     finally:

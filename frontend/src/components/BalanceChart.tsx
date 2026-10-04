@@ -25,6 +25,10 @@ export default function BalanceChart({ balances }: Props) {
 
   const formatCurrency = (n: number) => `$${(n / 1000).toFixed(1)}k`
 
+  // Under ~4 months of history, month labels repeat; show the day too
+  const spanDays = (parseISO(data[data.length - 1].date).getTime() - parseISO(data[0].date).getTime()) / 86400000
+  const tickFormat = spanDays < 120 ? 'MMM d' : 'MMM yy'
+
   return (
     <div className="bg-white rounded-lg border p-4 mb-6">
       <h3 className="font-semibold mb-3">Balance Over Time</h3>
@@ -33,7 +37,7 @@ export default function BalanceChart({ balances }: Props) {
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
           <XAxis
             dataKey="date"
-            tickFormatter={d => format(parseISO(d), 'MMM yy')}
+            tickFormatter={d => format(parseISO(d), tickFormat)}
             fontSize={11}
             interval="preserveStartEnd"
           />

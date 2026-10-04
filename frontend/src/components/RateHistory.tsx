@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react'
 import { format, parseISO } from 'date-fns'
 import type { Rate } from '../types'
-import { getRates, createRate, deleteRate } from '../api/client'
+import { getRates, createRate, deleteRate, errorMessage } from '../api/client'
 
-export default function RateHistory() {
+interface Props {
+  // Rate changes recompute every loan's balances, so the dashboard must reload
+  onRatesChanged: () => void
+}
+
+export default function RateHistory({ onRatesChanged }: Props) {
   const [rates, setRates] = useState<Rate[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [newDate, setNewDate] = useState(() => {
@@ -11,9 +16,14 @@ export default function RateHistory() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   })
   const [newRate, setNewRate] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
   const load = async () => {
-    setRates(await getRates())
+    try {
+      setRates(await getRates())
+    } catch (e) {
+      setError(errorMessage(e))
+    }
   }
 
   useEffect(() => { load() }, [])
@@ -21,16 +31,28 @@ export default function RateHistory() {
   const handleAdd = async () => {
     const rate = parseFloat(newRate)
     if (!rate || !newDate) return
-    await createRate({ effective_date: newDate, prime_rate: rate, source: 'manual' })
-    setShowAdd(false)
-    setNewRate('')
-    load()
+    setError(null)
+    try {
+      await createRate({ effective_date: newDate, prime_rate: rate, source: 'manual' })
+      setShowAdd(false)
+      setNewRate('')
+      load()
+      onRatesChanged()
+    } catch (e) {
+      setError(errorMessage(e))
+    }
   }
 
   const handleDelete = async (id: number) => {
     if (!confirm('Delete this rate entry? Balances will be recalculated.')) return
-    await deleteRate(id)
-    load()
+    setError(null)
+    try {
+      await deleteRate(id)
+      load()
+      onRatesChanged()
+    } catch (e) {
+      setError(errorMessage(e))
+    }
   }
 
   return (
@@ -44,6 +66,8 @@ export default function RateHistory() {
           {showAdd ? 'Cancel' : '+ Manual Override'}
         </button>
       </div>
+
+      {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
 
       {showAdd && (
         <div className="flex gap-3 items-end mb-3 p-3 bg-gray-50 rounded">

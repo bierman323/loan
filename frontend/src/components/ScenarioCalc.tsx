@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip as RTooltip, Legend } from 'recharts'
 import { format, parseISO } from 'date-fns'
-import { getProjection } from '../api/client'
+import { getProjection, errorMessage } from '../api/client'
 import type { ProjectionResult } from '../types'
 import Tooltip from './Tooltip'
 
@@ -14,9 +14,11 @@ export default function ScenarioCalc({ loanId }: Props) {
   const [extraRecurring, setExtraRecurring] = useState('')
   const [result, setResult] = useState<ProjectionResult | null>(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const calculate = async () => {
     setLoading(true)
+    setError(null)
     try {
       const data = await getProjection({
         loan_id: loanId,
@@ -24,6 +26,8 @@ export default function ScenarioCalc({ loanId }: Props) {
         extra_recurring: parseFloat(extraRecurring) || 0,
       })
       setResult(data)
+    } catch (e) {
+      setError(errorMessage(e))
     } finally {
       setLoading(false)
     }
@@ -76,21 +80,29 @@ export default function ScenarioCalc({ loanId }: Props) {
         </button>
       </div>
 
+{error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+
       {result && (
         <>
+          {!result.current_pays_off && (
+            <p className="text-sm text-rose-600 mb-3">
+              At the current payment this loan never pays off, so there is no baseline to compare savings against.
+              {result.new_pays_off ? ' With the extra payments it does pay off.' : ''}
+            </p>
+          )}
           <div className="grid grid-cols-3 gap-4 mb-4">
             <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
               <p className="text-xs text-gray-500">Interest Saved</p>
-              <p className="text-xl font-bold text-purple-700">{formatCurrency(result.interest_saved)}</p>
+              <p className="text-xl font-bold text-purple-700">{result.interest_saved != null ? formatCurrency(result.interest_saved) : 'N/A'}</p>
             </div>
             <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
               <p className="text-xs text-gray-500">Months Saved</p>
-              <p className="text-xl font-bold text-purple-700">{result.months_saved}</p>
+              <p className="text-xl font-bold text-purple-700">{result.months_saved != null ? result.months_saved : 'N/A'}</p>
             </div>
             <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
               <p className="text-xs text-gray-500">New Payoff Date</p>
               <p className="text-xl font-bold text-purple-700">
-                {result.new_payoff_date ? format(parseISO(result.new_payoff_date), 'MMM yyyy') : 'N/A'}
+                {result.new_payoff_date ? format(parseISO(result.new_payoff_date), 'MMM yyyy') : result.new_pays_off ? 'N/A' : 'Never'}
               </p>
             </div>
           </div>

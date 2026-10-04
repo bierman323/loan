@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from backend.database import get_db
 from backend.models import RateCreate, RateResponse
 from backend.services.interest_engine import recompute_daily_balances
+from backend.services.loan_plan import refresh_all_estimated_payments
 
 router = APIRouter(prefix="/api/rates", tags=["rates"])
 
@@ -33,6 +34,7 @@ def create_rate(rate: RateCreate):
         loans = db.execute("SELECT id FROM loans").fetchall()
         for loan in loans:
             recompute_daily_balances(loan["id"], from_date=rate.effective_date)
+        refresh_all_estimated_payments()
 
         row = db.execute("SELECT * FROM rate_history WHERE id = ?", (rate_id,)).fetchone()
         return RateResponse(**dict(row))
@@ -58,5 +60,6 @@ def delete_rate(rate_id: int):
         loans = db.execute("SELECT id FROM loans").fetchall()
         for loan in loans:
             recompute_daily_balances(loan["id"], from_date=eff_date)
+        refresh_all_estimated_payments()
     finally:
         db.close()

@@ -12,6 +12,21 @@ api.interceptors.request.use(config => {
   return config
 })
 
+// Turn an API failure into a readable message for the UI
+export function errorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const detail = error.response?.data?.detail
+    if (typeof detail === 'string') return detail
+    // FastAPI validation errors: [{ loc, msg, ... }]
+    if (Array.isArray(detail) && detail.length > 0) {
+      return detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join('; ')
+    }
+    if (!error.response) return 'Could not reach the server.'
+    return `Request failed (${error.response.status}).`
+  }
+  return 'Something went wrong.'
+}
+
 // Users
 export interface User {
   id: number

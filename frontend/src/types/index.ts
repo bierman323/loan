@@ -12,8 +12,20 @@ export interface Loan {
   daily_interest?: number
   effective_rate?: number
   interest_paid?: number
-  interest_remaining?: number
+  interest_remaining?: number | null
   maturity_date?: string | null
+  // Borrowing phase: planned monthly draws (projection only) and when repayment begins
+  planned_draw_amount: number
+  planned_draw_end_date?: string | null
+  repayment_start_date?: string | null
+  // The payoff date the plan aims for; the Term Shift card compares against it
+  planned_maturity_date?: string | null
+  in_borrowing_phase: boolean
+  // false when the regular payment never pays the loan off
+  pays_off?: boolean | null
+  balance_at_repayment_start?: number | null
+  total_borrowed?: number
+  total_repaid?: number
 }
 
 export interface LoanCreate {
@@ -24,6 +36,9 @@ export interface LoanCreate {
   payment_frequency: string
   spread: number
   term_months?: number | null
+  planned_draw_amount?: number
+  planned_draw_end_date?: string | null
+  repayment_start_date?: string | null
 }
 
 export interface Transaction {
@@ -66,12 +81,16 @@ export interface ProjectionPoint {
 }
 
 export interface ProjectionResult {
-  current_payoff_date?: string
+  current_payoff_date?: string | null
+  current_pays_off: boolean
   current_total_interest: number
-  new_payoff_date?: string
+  new_payoff_date?: string | null
+  new_pays_off: boolean
   new_total_interest: number
-  interest_saved: number
-  months_saved: number
+  // null when the current plan never pays off
+  interest_saved: number | null
+  months_saved: number | null
+  balance_at_repayment_start?: number | null
   current_trajectory: ProjectionPoint[]
   new_trajectory: ProjectionPoint[]
 }

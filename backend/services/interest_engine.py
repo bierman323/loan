@@ -23,21 +23,24 @@ def recompute_daily_balances(loan_id: int, from_date: date | None = None):
             return
 
         start_date = date.fromisoformat(loan["start_date"])
+
+        # Resume from the day before from_date when that day is cached. If it is not
+        # (no cache yet, or a gap from downtime), fall back to a full recompute from the
+        # loan start (loans start at 0; the initial amount is a disbursement transaction).
+        prev = None
         if from_date and from_date > start_date:
-            # Get balance from the day before from_date
+            day_before = from_date - timedelta(days=1)
             prev = db.execute(
-                "SELECT closing_balance FROM daily_balances WHERE loan_id = ? AND date < ? ORDER BY date DESC LIMIT 1",
-                (loan_id, from_date.isoformat()),
+                "SELECT closing_balance FROM daily_balances WHERE loan_id = ? AND date = ?",
+                (loan_id, day_before.isoformat()),
             ).fetchone()
-            if prev:
-                current_balance = _to_decimal(prev["closing_balance"])
-            else:
-                current_balance = _to_decimal(loan["initial_amount"])
+
+        if prev:
+            current_balance = _to_decimal(prev["closing_balance"])
             calc_start = from_date
         else:
             current_balance = Decimal("0")
             calc_start = start_date
-            from_date = start_date
 
         # Clear existing records from calc_start forward
         db.execute(
@@ -54,18 +57,9 @@ def recompute_daily_balances(loan_id: int, from_date: date | None = None):
         for t in txn_rows:
             txn_by_date.setdefault(t["date"], []).append(_to_decimal(t["amount"]))
 
-        # Also get transactions before calc_start if we're restarting from the beginning
-        if calc_start == start_date:
-            pre_txns = db.execute(
-                "SELECT date, amount FROM transactions WHERE loan_id = ? AND date < ? ORDER BY date, id",
-                (loan_id, calc_start.isoformat()),
-            ).fetchall()
-            for t in pre_txns:
-                txn_by_date.setdefault(t["date"], []).append(_to_decimal(t["amount"]))
-
         # Get all rate history
         rates = db.execute(
-            "SELECT effective_date, prime_rate FROM rate_history ORDER BY effective_date"
+            "SELECT effective_date, prime_rate FROM rate_history ORDER BY effective_date, id"
         ).fetchall()
         rate_list = [(r["effective_date"], _to_decimal(r["prime_rate"])) for r in rates]
 
@@ -94,13 +88,15 @@ def recompute_daily_balances(loan_id: int, from_date: date | None = None):
                 for amt in txn_by_date[day_str]:
                     current_balance += amt  # negative = payment, positive = disbursement
 
-            # Get effective rate for this day
+            # Get effective rate for this day. Days before the first stored rate use the
+            # earliest known rate rather than charging the spread alone. Rate history is
+            # backfilled from the Bank of Canada, so this only happens if that failed.
             prime = _get_rate_for_date(rate_list, day_str)
+            if prime is None and rate_list:
+                prime = rate_list[0][1]
             if prime is None:
-                # No rate available, skip interest
-                effective_rate = spread
-            else:
-                effective_rate = prime + spread
+                prime = Decimal("0")
+            effective_rate = prime + spread
 
             # Calculate daily interest
             if current_balance > 0:

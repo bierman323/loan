@@ -20,6 +20,10 @@ CREATE TABLE IF NOT EXISTS loans (
     spread REAL NOT NULL DEFAULT 0.9,
     term_months INTEGER,
     user_id INTEGER REFERENCES users(id),
+    planned_draw_amount REAL NOT NULL DEFAULT 0,
+    planned_draw_end_date DATE,
+    repayment_start_date DATE,
+    planned_maturity_date DATE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -74,5 +78,20 @@ def init_db():
         conn.execute("ALTER TABLE loans ADD COLUMN term_months INTEGER")
     if "user_id" not in cols:
         conn.execute("ALTER TABLE loans ADD COLUMN user_id INTEGER REFERENCES users(id)")
+    # Draws over time: planned monthly borrowing (projection only) and when repayment begins
+    if "planned_draw_amount" not in cols:
+        conn.execute("ALTER TABLE loans ADD COLUMN planned_draw_amount REAL NOT NULL DEFAULT 0")
+    if "planned_draw_end_date" not in cols:
+        conn.execute("ALTER TABLE loans ADD COLUMN planned_draw_end_date DATE")
+    if "repayment_start_date" not in cols:
+        conn.execute("ALTER TABLE loans ADD COLUMN repayment_start_date DATE")
+    # The payoff date the plan aims for. term_months is overwritten with the remaining
+    # term when the payment is adjusted, so it cannot serve as the baseline.
+    if "planned_maturity_date" not in cols:
+        conn.execute("ALTER TABLE loans ADD COLUMN planned_maturity_date DATE")
+        conn.execute(
+            """UPDATE loans SET planned_maturity_date = date(start_date, '+' || term_months || ' months')
+               WHERE term_months IS NOT NULL"""
+        )
     conn.commit()
     conn.close()

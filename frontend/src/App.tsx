@@ -111,11 +111,12 @@ export default function App() {
           {activeLoan && (
             <>
               <Dashboard loan={activeLoan} onRefresh={handleRefresh} />
-              <PaymentForm loan={activeLoan} onPaymentAdded={handleRefresh} />
+              <PaymentForm key={activeLoan.id} loan={activeLoan} onPaymentAdded={handleRefresh} />
               <PaymentHistory transactions={transactions} onRefresh={handleRefresh} />
               <BalanceChart balances={balances} />
-              <ScenarioCalc loanId={activeLoan.id} />
-              <RateHistory />
+              {/* key resets the calculator so one loan's result never shows on another */}
+              <ScenarioCalc key={activeLoan.id} loanId={activeLoan.id} />
+              <RateHistory onRatesChanged={handleRefresh} />
             </>
           )}
         </>
