@@ -220,3 +220,30 @@ class TestSpread:
         assert updated["interest_paid"] < interest_before
         # Borrowing phase: the estimated payment follows the lower rate
         assert updated["regular_payment"] < payment_before
+
+
+class TestPlannedDrawSchedule:
+    def schedule_for(self, loan_id):
+        db = get_db()
+        row = db.execute("SELECT * FROM loans WHERE id = ?", (loan_id,)).fetchone()
+        schedule = get_schedule(db, row, TODAY)
+        db.close()
+        return schedule
+
+    def test_planned_draws_follow_regular_draw_day_not_loan_start(self, client):
+        # Loan started on one day, but regular draws happen on another (like the 1st)
+        loan = create_school_loan(client, start_date=days_from_today(-50), initial_amount=1500,
+                                  planned_draw_amount=3000)
+        regular_draw_day = TODAY - timedelta(days=3)
+        record(client, loan["id"], -3, 3000)
+        draw_dates = self.schedule_for(loan["id"]).draw_dates
+        # Monthly from the recorded regular draw, with no extra draw on the loan start's day
+        expected = [add_months(regular_draw_day, n) for n in range(1, len(draw_dates) + 1)]
+        assert draw_dates == expected
+        assert len(draw_dates) >= 3
+
+    def test_one_off_draw_of_other_amount_does_not_shift_schedule(self, client):
+        loan = create_school_loan(client, planned_draw_amount=2000)
+        before = self.schedule_for(loan["id"]).draw_dates
+        record(client, loan["id"], -1, 750)  # one-off
+        assert self.schedule_for(loan["id"]).draw_dates == before

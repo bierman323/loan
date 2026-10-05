@@ -303,7 +303,7 @@ export default function Dashboard({ loan, onRefresh }: Props) {
             </div>
           </div>
           <p className="text-xs text-gray-400 mt-2">
-            Planned draws are only used for projections. They repeat monthly on the loan's start day; record each actual draw below.
+            Planned draws are only used for projections. They repeat monthly from the last draw of this amount; record each actual draw below.
             The first payment is due one period after repayment begins.
           </p>
           {editButtons}

@@ -144,20 +144,26 @@ def get_schedule(db, loan, today: date) -> LoanSchedule:
         payment_anchor = date.fromisoformat(last_payment)
     first_payment_date = first_date_after(payment_anchor, frequency, max(today, payment_anchor))
 
-    # Planned monthly draws, on the loan start's day of the month (the first draw).
-    # Anchored to the start rather than the latest draw so a one-off extra draw does
-    # not shift the monthly schedule.
+    # Planned monthly draws continue one month after the most recent draw of the planned
+    # amount (so they fall on the same day as the regular draws), or after the loan start
+    # if none has been recorded yet. Draws of other amounts are one-offs and do not shift
+    # the schedule.
     draw_amount = _to_decimal(loan["planned_draw_amount"] or 0)
     draw_dates: list[date] = []
     if draw_amount > 0 and loan["planned_draw_end_date"]:
         draw_end = date.fromisoformat(loan["planned_draw_end_date"])
+        last_regular_draw = db.execute(
+            "SELECT MAX(date) AS d FROM transactions WHERE loan_id = ? AND amount = ? AND date <= ?",
+            (loan["id"], float(draw_amount), today.isoformat()),
+        ).fetchone()["d"]
+        draw_anchor = date.fromisoformat(last_regular_draw) if last_regular_draw else start_date
         n = 1
-        next_draw = add_months(start_date, n)
+        next_draw = add_months(draw_anchor, n)
         while next_draw <= draw_end:
             if next_draw > today:
                 draw_dates.append(next_draw)
             n += 1
-            next_draw = add_months(start_date, n)
+            next_draw = add_months(draw_anchor, n)
 
     return LoanSchedule(
         regular_payment=_to_decimal(loan["regular_payment"]),
